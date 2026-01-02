@@ -1,25 +1,46 @@
 
 <p align="center">
-  <a href="#-model-architecture">
+  <a href="#model-architecture">
     <img src="https://img.shields.io/badge/Architecture-View-blue?style=for-the-badge" />
   </a>
-  <a href="#-how-it-works">
+  <a href="#training-strategy">
     <img src="https://img.shields.io/badge/How%20It%20Works-Explore-green?style=for-the-badge" />
   </a>
-  <a href="#-possible-improvements">
+  <a href="#future-improvements">
     <img src="https://img.shields.io/badge/Future%20Plans-Roadmap-orange?style=for-the-badge" />
   </a>
 </p>
 
+# Music Genre Classification with CNN on Mel Spectrograms
 
-# 🎵 Music Genre Classification using CNNs on Mel-Spectrograms
+An end-to-end deep learning project that classifies music into genres using convolutional neural networks trained on mel-spectrogram representations of audio signals.
 
-This repository contains a **from-scratch PyTorch implementation of a Convolutional Neural Network (CNN)** for **music genre classification** using **mel-spectrogram representations of audio**.
+This project demonstrates the full ML pipeline: signal processing → feature extraction → model design → training → evaluation → deployment via a web interface.
 
-Instead of relying on pretrained audio models, this project focuses on building the entire pipeline end-to-end:
-**audio → signal processing → spectrograms → CNN → evaluation → inference**.
+---
 
-The goal is to understand how visual deep learning models can be applied to audio through time-frequency representations.
+## Project Overview
+
+Music is a time-series signal, but CNNs operate on images. This project bridges that gap by:
+
+1. Converting raw audio into mel spectrograms  
+2. Training a VGG-style CNN on these spectrograms  
+3. Using chunk-wise temporal aggregation to classify long audio tracks  
+4. Deploying the trained model in a Flask web application  
+
+Users can upload a `.wav` file and receive a predicted genre along with model confidence.
+
+---
+
+## Key Concepts Demonstrated
+
+- Digital signal processing (sampling, windowing, Fourier transform)
+- Mel-frequency scaling (psychoacoustically motivated features)
+- CNNs for 2D pattern recognition
+- Chunk-based temporal modeling
+- Training deep networks from scratch
+- Model serialization and inference
+- Web deployment of ML models
 
 ---
 
@@ -37,165 +58,112 @@ It is intentionally learning-focused rather than benchmark-driven.
 
 ---
 
-## Problem Statement
+## Model Architecture
 
-Music genre classification aims to automatically assign a genre label (e.g., rock, jazz, classical) to an audio track.
+### Feature Extraction
 
-Raw audio waveforms are difficult for CNNs to process directly, so each audio file is converted into **mel-spectrograms**, which encode frequency intensity over time and can be treated as images.
+- Audio resampled to **22,050 Hz**
+- Split into overlapping 10-second windows (50% overlap)
+- Each window → mel spectrogram:
+  - 128 mel bands
+  - FFT size = 2048
+  - Hop length = 512
+- Spectrograms normalized per chunk
 
-The model learns genre-specific spectral patterns from these representations.
+### Model Architecture (VGG-style CNN)
 
----
+- Input: 1 × 128 × T mel spectrogram <br>
+[Conv → ReLU → Conv → ReLU → BatchNorm → MaxPool] × 5 blocks <br>
+Channels: 1 → 32 → 64 → 128 → 256 → 256 <br>
+AdaptiveAvgPool → Fully Connected Layers <br>
+256 → 512 → 128 → 10 (genres) <br>
 
-## Pipeline Overview
+<img width="920" height="572" alt="image" src="https://github.com/user-attachments/assets/d5b5b9af-a70a-459e-a886-ebfa504257b9" />
 
-```
-Audio (.wav)
-   ↓
-Split into overlapping chunks (10s, 50% overlap)
-   ↓
-Convert each chunk → Mel-spectrogram
-   ↓
-Normalize spectrograms
-   ↓
-CNN predicts genre probabilities per chunk
-   ↓
-Average probabilities across chunks
-   ↓
-Final genre prediction
-```
 
----
-
-## Data Preprocessing
-
-### Audio Loading
-
-- Audio is loaded using `librosa.load` at **22,050 Hz**
-- Converted to mono and normalized automatically
-
-### Chunking
-
-Each audio file is split into overlapping windows:
-
-- Window size: **10 seconds**
-- Overlap: **50%**
-
-This increases the number of training samples and helps capture temporal variation.
-
-### Spectrogram Generation
-
-Each chunk is converted into a mel-spectrogram:
-
-- `n_mels = 128`
-- `n_fft = 2048`
-- `hop_length = 512`
-- Converted to decibel scale and normalized per chunk
-
-This produces a `(128 × time)` representation per chunk.
+- ReLU activations
+- Batch normalization for stability
+- Dropout for regularization
+- Cross-entropy loss
+- Adam optimizer
 
 ---
 
 ## Dataset
 
-- The dataset is organized as:
+- GTZAN Music Genre Dataset  
+- 10 genres, ~100 tracks per genre  
+- Each track ~30 seconds  
 
-```
-root/
- ├── blues/
- ├── classical/
- ├── jazz/
- ├── metal/
- └── ...
-```
-
-- Loaded using `torchvision.datasets.ImageFolder` logic applied to generated spectrograms
-- Labels are inferred from folder names
-- Data is split using `train_test_split` with stratification (80% train / 20% validation)
+Each track is split into multiple overlapping windows, allowing the model to learn local time-frequency patterns while still producing a global classification.
 
 ---
 
-## Model Architecture
+## Training Strategy
 
-The model is inspired by **VGG-style CNNs** and implemented from scratch.
+- Audio split into overlapping chunks  
+- Each chunk treated as an independent training example  
+- During inference:
+  - Model predicts genre probabilities for each chunk
+  - Probabilities are averaged across all chunks
+  - Final prediction = argmax of averaged probabilities  
 
-### Architecture
-
-- 5 convolutional blocks:
-  - Conv → ReLU → Conv → ReLU → BatchNorm → MaxPool
-- Adaptive average pooling to remove dependency on input width
-- Fully connected classifier:
-  - 256 → 512 → 128 → 10
-  - Dropout for regularization
-
-**Input:** `(1 × 128 × T)` mel-spectrogram  
-**Output:** Probability distribution over 10 genres
+This avoids needing RNNs or Transformers while still capturing temporal information.
 
 ---
 
-## Training Setup
+## Web Application
 
-- Loss: `CrossEntropyLoss`
-- Optimizer: Adam (`lr = 0.001`)
-- Batch size: 32
-- Device:
-  - Apple Silicon (MPS) if available
-  - CPU otherwise
-- Epochs: 50
+A Flask web interface allows:
 
-Training and validation accuracy and loss are tracked across epochs.
+- Uploading `.wav` files
+- Running inference on the trained model
+- Displaying predicted genre + confidence
+- Playing back the uploaded audio
 
----
-
-## Inference
-
-For inference on full audio files:
-
-1. Audio is split into chunks.
-2. Each chunk is classified independently.
-3. Softmax probabilities are averaged across chunks.
-4. Final prediction is the class with highest mean probability.
-
-This improves robustness compared to classifying only a single segment.
+This demonstrates practical deployment and model usability.
 
 ---
 
-## Evaluation
+## Tech Stack
 
-- Performance is evaluated on a held-out validation set.
-- Metrics:
-  - Accuracy
-  - Loss curves
-- Confusion analysis can be added later.
-
----
-
-## Key Takeaways
-
-- CNNs can learn meaningful audio features when audio is represented as spectrograms.
-- Preprocessing choices (chunking, normalization, resolution) strongly affect performance.
-- Genre classification is inherently difficult due to overlapping musical characteristics.
-- Simpler models often generalize better on small datasets.
+- Python
+- PyTorch
+- Librosa
+- NumPy
+- Flask
+- HTML/CSS
 
 ---
 
-## Possible Improvements
+## Why This Project Matters
 
-- Use CRNN or temporal attention models.
-- Add spectrogram-specific augmentation (time/frequency masking).
-- Experiment with pretrained backbones.
-- Increase dataset size and diversity.
-- Add real-time audio input inference.
+This project is not just about training a classifier — it demonstrates:
+
+- Understanding of signal processing, not just neural networks
+- Designing architectures appropriate to the data modality
+- Engineering decisions around windowing, normalization, and aggregation
+- Awareness of deployment and usability
+- End-to-end ownership of an ML system
+
+It reflects real-world ML work more than a Kaggle-style notebook.
 
 ---
 
-## Disclaimer
+## Future Improvements
 
-This project is intended for learning and experimentation.
-It prioritizes clarity, modularity, and understanding over state-of-the-art performance.
+- Add probability distribution visualizations
+- Add Grad-CAM on spectrograms for interpretability
+- Experiment with pre-trained audio models (e.g. PANNs, YAMNet)
+- Try Transformers on spectrogram patches
+- Support more audio formats (mp3, flac)
+- Add REST API endpoint
 
 ---
 
 ## Author
 
-**Abhi** — Learning-focused ML, DL & signal processing projects.
+**Abhi**  
+Interested in machine learning, deep learning, signal processing, and building models from first principles.
+
+
